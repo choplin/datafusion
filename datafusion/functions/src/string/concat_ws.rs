@@ -30,7 +30,7 @@ use crate::strings::{
 use datafusion_common::cast::{
     as_large_string_array, as_string_array, as_string_view_array,
 };
-use datafusion_common::{Result, ScalarValue, exec_err, internal_err, plan_err};
+use datafusion_common::{Result, ScalarValue, Spans, exec_err, internal_err, plan_err};
 use datafusion_expr::expr::ScalarFunction;
 use datafusion_expr::simplify::{ExprSimplifyResult, SimplifyContext};
 use datafusion_expr::{ColumnarValue, Documentation, Expr, Volatility, lit};
@@ -431,6 +431,7 @@ fn simplify_concat_ws(delimiter: &Expr, args: &[Expr]) -> Result<ExprSimplifyRes
                                 ScalarFunction {
                                     func: concat(),
                                     args: args.to_vec(),
+                                    spans: Spans::new(),
                                 },
                             )))
                         }
@@ -488,6 +489,7 @@ fn simplify_concat_ws(delimiter: &Expr, args: &[Expr]) -> Result<ExprSimplifyRes
                         ScalarFunction {
                             func: concat_ws(),
                             args: new_args,
+                            spans: Spans::new(),
                         },
                     )))
                 }
