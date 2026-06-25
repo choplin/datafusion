@@ -36,6 +36,7 @@ use datafusion_common::{
     Column, DataFusionError, Diagnostic, ExprSchema, Result, ScalarValue, Span, Spans,
     TableReference, not_impl_err, plan_datafusion_err, plan_err,
 };
+use datafusion_expr_common::signature::Arity;
 use datafusion_expr_common::type_coercion::binary::BinaryTypeCoercer;
 use datafusion_functions_window_common::field::WindowUDFFieldArgs;
 use std::sync::Arc;
@@ -742,25 +743,46 @@ fn verify_function_arguments<F: UDFCoercionExt>(
             err => err.to_string(),
         };
 
-        let types_str = data_types
-            .iter()
-            .map(|dt| dt.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        let candidates = function
-            .signature()
-            .type_signature
-            .to_string_repr_with_names(function.signature().parameter_names.as_deref())
-            .iter()
-            .map(|args_str| format!("{name}({args_str})"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let diagnostic = Diagnostic::new_error(
-            format!("invalid argument type(s) for '{name}'"),
-            func_span,
-        )
-        .with_note(format!("called with argument type(s): {types_str}"), None)
-        .with_help(format!("candidate function(s): {candidates}"), None);
+        let diagnostic = match function.signature().type_signature.arity() {
+            // The function has a fixed arity but was called with a different
+            // number of arguments: report a "wrong number of arguments" error
+            // rather than an argument type error.
+            Arity::Fixed(expected) if expected != data_types.len() => {
+                Diagnostic::new_error(
+                    format!("wrong number of arguments for function '{name}'"),
+                    func_span,
+                )
+                .with_note(
+                    format!("expected {expected} argument(s), got {}", data_types.len()),
+                    None,
+                )
+            }
+            // Otherwise the argument count is acceptable, so the failure is due
+            // to the argument types not matching any candidate signature.
+            _ => {
+                let types_str = data_types
+                    .iter()
+                    .map(|dt| dt.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let candidates = function
+                    .signature()
+                    .type_signature
+                    .to_string_repr_with_names(
+                        function.signature().parameter_names.as_deref(),
+                    )
+                    .iter()
+                    .map(|args_str| format!("{name}({args_str})"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                Diagnostic::new_error(
+                    format!("invalid argument type(s) for '{name}'"),
+                    func_span,
+                )
+                .with_note(format!("called with argument type(s): {types_str}"), None)
+                .with_help(format!("candidate function(s): {candidates}"), None)
+            }
+        };
 
         plan_datafusion_err!("{err_msg}. {signature_msg}").with_diagnostic(diagnostic)
     })

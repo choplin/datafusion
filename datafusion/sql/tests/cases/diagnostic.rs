@@ -706,3 +706,20 @@ fn test_invalid_aggregate_function_argument_types() -> Result<()> {
     assert_snapshot!(diag.helps[0].message, @"candidate function(s): sum(UserDefined)");
     Ok(())
 }
+
+#[test]
+fn test_wrong_number_of_function_arguments() -> Result<()> {
+    // `power` has a fixed arity of 2, but is called here with a single argument
+    let state = MockSessionState::default()
+        .with_scalar_function(datafusion_functions::math::power());
+    let query = "SELECT /*a*/power/*a*/(id) FROM person";
+    let spans = get_spans(query);
+    let diag = do_query_with_state(query, state);
+    assert_snapshot!(
+        diag.message,
+        @"wrong number of arguments for function 'power'"
+    );
+    assert_eq!(diag.span, Some(spans["a"]));
+    assert_snapshot!(diag.notes[0].message, @"expected 2 argument(s), got 1");
+    Ok(())
+}
